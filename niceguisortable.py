@@ -259,6 +259,9 @@ def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
         }
         </style>
         ''')
+    ui.add_head_html(
+        '<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>'
+    )
     refs = {"block_list": None}
 
     with ui.row().classes("w-full gap-4").style("align-items: flex-start;"):
@@ -308,11 +311,6 @@ def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
                     def edit():
                         _open_edit_dialog(state, blk_id, block_list, image_broker)
                     return edit
-
-                def on_reorder(e: SortableEventArguments):
-                    bloque = state.bloques.pop(e.old_index)
-                    state.bloques.insert(e.new_index, bloque)
-                    block_list.refresh()
 
                 with ui.column().classes('w-full gap-1') as sortable_col:
                     for i, bloque in enumerate(state.bloques):
@@ -378,12 +376,30 @@ def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
                                 ui.separator().style("margin: 8px 0;")
                                 handler.render_preview(bloque)
 
-                sortable_col.make_sortable(
-                    handle='.drag-handle',
-                    on_end=lambda e: on_reorder(e),
-                )
+                ui.run_javascript(f'''
+                    (function() {{
+                        var el = getElement("{sortable_col.id}");
+                        if (!el || el._sortable_init) return;
+                        el._sortable_init = true;
+                        new Sortable(el, {{
+                            handle: ".drag-handle",
+                            animation: 150,
+                            onEnd: function(evt) {{
+                                emitEvent("bloques-reorder",
+                                    {{old_index: evt.oldIndex, new_index: evt.newIndex}});
+                            }}
+                        }});
+                    }})();
+                ''')
 
             block_list()
+
+    def on_reorder_js(args: dict):
+        bloque = state.bloques.pop(args['old_index'])
+        state.bloques.insert(args['new_index'], bloque)
+        block_list.refresh()
+
+    ui.on('bloques-reorder', lambda e: on_reorder_js(e.args))
 
     # Ahora que block_list ya existe, definimos el block_adder dentro del
     # contenedor reservado en la columna izquierda (adder_slot) y lo
