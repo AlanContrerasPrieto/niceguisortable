@@ -377,7 +377,7 @@ def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
                                 handler.render_preview(bloque)
 
                 ui.run_javascript(f'''
-                    (function() {{
+                    setTimeout(function() {{
                         var el = getElement("{sortable_col.id}");
                         if (!el || el._sortable_init) return;
                         el._sortable_init = true;
@@ -389,7 +389,7 @@ def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
                                     {{old_index: evt.oldIndex, new_index: evt.newIndex}});
                             }}
                         }});
-                    }})();
+                    }}, 100);
                 ''')
 
             block_list()
