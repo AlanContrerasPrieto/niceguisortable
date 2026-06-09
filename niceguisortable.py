@@ -245,3 +245,167 @@ with ui.row().classes('w-full h-screen'):
 render_right_column(right_col, app_state)
 
 ui.run(title='NiceGUI Sortable Demo')
+
+
+
+
+# //SEC Tab_bloques
+def _build_bloques_tab(state: AppState, image_broker: ImageBroker):
+    """Punto de entrada del tab de bloques. Firma idéntica al original."""
+    ui.add_head_html('''
+        <style>
+        .no-preview .q-uploader__list {
+        display: none;
+        }
+        </style>
+        ''')
+    refs = {"block_list": None}
+
+    with ui.row().classes("w-full gap-4").style("align-items: flex-start;"):
+
+        # PIN Columna izquierda: agregar bloques
+        with ui.card().style("flex: 60; min-width: 0;"):
+            ui.label("Agregar bloque").classes("section-header")
+            ui.separator()
+
+            tipo_toggle = ui.toggle(TIPO_OPTIONS, value="templates") \
+                .classes("w-full justify-center")
+
+            ui.separator().style("margin: 12px 0;")
+
+            adder_slot = ui.column().classes("w-full")
+
+        # PIN Columna derecha: lista de bloques
+        with ui.card().style("flex: 40; min-width: 0;"):
+            ui.label("Bloques actuales").classes("section-header")
+            ui.separator()
+
+            @ui.refreshable
+            def block_list():
+                if not state.bloques:
+                    ui.label("Aún no hay bloques.").style("color: #888; font-style: italic;")
+                    return
+
+                def make_move(idx: int, direction: str):
+                    def move():
+                        bloques = state.bloques
+                        n = len(bloques)
+                        if direction == "top" and idx > 0: b = bloques.pop(idx); bloques.insert(0, b)
+                        elif direction == "up" and idx > 0: b = bloques.pop(idx); bloques.insert(idx-1, b)
+                        elif direction == "down" and idx < n-1: b = bloques.pop(idx); bloques.insert(idx+1, b)
+                        elif direction == "bottom" and idx < n-1: b = bloques.pop(idx); bloques.append(b)
+                        block_list.refresh()
+                    return move
+
+                def make_delete(idx):
+                    def dlt():
+                        state.bloques.pop(idx)
+                        block_list.refresh()
+                        ui.notify("🗑️ Bloque eliminado", type="warning")
+                    return dlt
+
+                def make_edit(blk_id):
+                    def edit():
+                        _open_edit_dialog(state, blk_id, block_list, image_broker)
+                    return edit
+
+                def on_reorder(e: SortableEventArguments):
+                    bloque = state.bloques.pop(e.old_index)
+                    state.bloques.insert(e.new_index, bloque)
+                    block_list.refresh()
+
+                with ui.column().classes('w-full gap-1') as sortable_col:
+                    for i, bloque in enumerate(state.bloques):
+                        tipo = bloque["tipo"]
+                        handler = HANDLERS.get(tipo)
+
+                        if handler is None:
+                            with ui.row().classes('items-center w-full gap-1'):
+                                ui.icon('drag_indicator').classes(
+                                    'drag-handle cursor-grab active:cursor-grabbing text-gray-400'
+                                )
+                                ui.label(f"⚠️ Bloque #{i+1} con tipo desconocido: {tipo}") \
+                                    .style("color:#cc0000;")
+                            continue
+
+                        # Tools → render compacto inline
+                        if handler.is_tool:
+                            with ui.row().classes('items-center w-full gap-1'):
+                                ui.icon('drag_indicator').classes(
+                                    'drag-handle cursor-grab active:cursor-grabbing text-gray-400'
+                                )
+                                with ui.element():
+                                    handler.render_tool_row(bloque, i, make_move, make_delete, make_edit)
+                            continue
+
+                        # Bloques normales → expansion
+                        etiqueta_tipo = handler.get_label(bloque)
+                        resumen = handler.get_summary(bloque)
+                        caption = etiqueta_tipo
+                        if resumen:
+                            caption += f" | {resumen}"
+
+                        with ui.row().classes('items-center w-full gap-1'):
+                            ui.icon('drag_indicator').classes(
+                                'drag-handle cursor-grab active:cursor-grabbing text-gray-400'
+                            )
+                            with ui.expansion().classes("flex-1 block-card") \
+                                    .style("margin-bottom: 4px;") as exp:
+                                with exp.add_slot("header"):
+                                    with ui.row().classes("w-full items-center gap-2") \
+                                            .style("flex-wrap: nowrap;"):
+                                        ui.label(f"{i+1}").classes("text-xs text-gray-500") \
+                                            .style("min-width: 22px;")
+                                        ui.label(caption).classes("flex-1") \
+                                            .style("font-weight: 600; overflow: hidden; "
+                                                   "text-overflow: ellipsis; white-space: nowrap;")
+                                        ui.button("✏️ Editar",
+                                                  on_click=make_edit(bloque["id"])) \
+                                            .props("flat dense").style("color: #0063A6;") \
+                                            .on("click.stop")
+
+                                # Fila inferior de botones: mover (izq) + eliminar (der)
+                                with ui.row().classes("w-full gap-2 items-center"):
+                                    ui.button(icon="keyboard_double_arrow_up", on_click=make_move(i, "top"))
+                                    ui.button(icon="keyboard_arrow_up", on_click=make_move(i, "up"))
+                                    ui.button(icon="keyboard_arrow_down", on_click=make_move(i, "down"))
+                                    ui.button(icon="keyboard_double_arrow_down", on_click=make_move(i, "bottom"))
+                                    ui.space()
+                                    ui.button("🗑️ Eliminar",
+                                              on_click=make_delete(i)) \
+                                        .props("flat").style("color: #cc0000;")
+
+                                ui.separator().style("margin: 8px 0;")
+                                handler.render_preview(bloque)
+
+                sortable_col.make_sortable(
+                    handle='.drag-handle',
+                    on_end=lambda e: on_reorder(e),
+                )
+
+            block_list()
+
+    # Ahora que block_list ya existe, definimos el block_adder dentro del
+    # contenedor reservado en la columna izquierda (adder_slot) y lo
+    # cableamos al toggle.
+    refs["block_list"] = block_list
+
+    @ui.refreshable
+    def block_adder():
+        handler = FORM_HANDLERS.get(tipo_toggle.value)
+        if handler is None:
+            ui.label(f"⚠️ Tipo no soportado: {tipo_toggle.value}") \
+                .style("color: #cc0000;")
+            return
+        handler.render_form(state, refs["block_list"], image_broker)
+
+    def _refresh_adder():
+        adder_slot.clear()
+        with adder_slot:
+            block_adder()
+
+    tipo_toggle.on("update:model-value", lambda _: _refresh_adder())
+
+    with adder_slot:
+        block_adder()
+# endregion //!SEC
